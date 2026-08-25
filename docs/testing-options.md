@@ -7,6 +7,18 @@ field disappeared or an endpoint started returning 500 on a boundary value. Clus
 apps only — no production data. We want open source, self-hosted, running in the same cluster,
 and cheap.
 
+**Already in place.** Three pieces of the answer are settled before we start, and they narrow the
+options considerably:
+
+| Given | What it settles |
+| --- | --- |
+| **A spot/preemptible node pool**, tainted | Where everything runs. Every pod in this system — runners, operators, the object store — gets a matching `nodeSelector` and `toleration`. See [Placement](#placement-everything-lands-on-the-spot-pool). |
+| **Argo CD** | The trigger. PostSync hooks fire on every upgrade with no new controller and no new habit for anyone to learn. Argo CD Notifications also gives us alerting without standing up Alertmanager for it. |
+| **MinIO Operator** | The sink. Reports, traces and videos land in a Tenant bucket; the link goes in the failure notification. |
+
+That leaves genuinely open only two questions: which runners to use, and whether to eventually
+gate deployments on the result.
+
 ## The constraint that shapes everything
 
 We do not own these applications. We cannot add test hooks, we don't control their release
@@ -28,6 +40,95 @@ cost**, and hand-write scripted flows only for the handful of journeys that genu
 
 Roughly: get 80% of the coverage from the top five rows, and spend the scripting budget on
 login + the two or three flows per app that would actually page someone.
+
+## Placement: everything lands on the spot pool
+
+Everything in this system is ephemeral or disposable, so all of it goes on the existing spot
+pool. Substitute the real label and taint key from the pool — the shape is the same everywhere:
+
+```yaml
+# The fragment. Goes into every pod spec this system creates.
+nodeSelector:
+  <spot-pool-label>: "true"          # e.g. karpenter.sh/capacity-type: spot
+                                     #      cloud.google.com/gke-spot: "true"
+                                     #      eks.amazonaws.com/capacityType: SPOT
+tolerations:
+  - key: "<spot-taint-key>"          # e.g. karpenter.sh/disruption, cloud.google.com/gke-spot
+    operator: "Equal"
+    value: "true"
+    effect: "NoSchedule"
+```
+
+### Where it goes, per component
+
+| Component | Path to the fragment |
+| --- | --- |
+| Playwright test `Job` | `spec.template.spec` |
+| Argo CD PostSync hook `Job` | `spec.template.spec` — it is an ordinary Job |
+| Nightly `CronJob` | `spec.jobTemplate.spec.template.spec` |
+| MinIO **Operator** | Helm values `operator.nodeSelector` / `operator.tolerations` |
+| MinIO **Tenant** | `spec.pools[].nodeSelector` and `spec.pools[].tolerations` — *separate from the operator's own* |
+| Testkube | Chart `nodeSelector`/`tolerations` **and** the executor job template, because executors spawn their own pods |
+| Argo Workflows | `workflowDefaults.spec.nodeSelector` / `.tolerations` in the controller ConfigMap, so every workflow inherits it |
+| Kuberhealthy | Chart values **and** each `KuberhealthyCheck` pod spec — checks run as their own pods |
+
+**The gotcha worth internalising:** an operator's own placement is not inherited by the pods it
+creates. Testkube executors, Kuberhealthy checks, k6 runners and MinIO Tenant pods are all
+spawned by a controller, and each needs the fragment configured separately. Miss one and it
+silently schedules onto the default pool — where it works fine and quietly costs on-demand money
+until someone reads a bill.
+
+### Better: stop hand-placing pods
+
+Rather than threading that fragment through a dozen manifests and hoping nobody forgets, put the
+whole system in one namespace and inject placement at admission:
+
+- **Kyverno mutating policy** (recommended) — one `ClusterPolicy` that adds the `nodeSelector` and
+  `toleration` to every pod created in the `app-testing` namespace. Catches operator-spawned pods
+  automatically, works on any distribution, and is one file to review.
+- **`PodNodeSelector` admission plugin** — the built-in equivalent, driven by a namespace
+  annotation. Simpler, but it needs an API-server flag, so it's typically unavailable on managed
+  control planes. It also only handles the selector, not the toleration.
+
+Either way, the manifests stay clean and there is exactly one place to change if the pool is
+renamed.
+
+### Spot-specific hardening
+
+Preemption is the price of the pool, and it shows up as a *test failure* unless we handle it.
+
+- **A reclaimed run is not a red result.** Set `restartPolicy: Never` and `backoffLimit: 2` on
+  test Jobs so a preempted run retries instead of reporting a regression that didn't happen.
+  Before treating a run as failed, check for a `DisruptionTarget` pod condition — that's node
+  reclamation, not the app.
+- **Never let a preempted run trip a gate.** This matters most in Stack C: Flagger sees a failed
+  analysis webhook and rolls back. Only report a verdict from a run that actually reached
+  completion. A rollback caused by a spot reclaim would destroy trust in the gate on day one.
+- **Give scale-up room.** A PostSync hook Job may sit `Pending` for a minute or two while a spot
+  node is provisioned. Set `activeDeadlineSeconds` generously (1800 is reasonable for a full
+  suite) so a slow scale-up doesn't kill the run, and don't alert on pending-under-5-minutes.
+- **Short grace periods.** `terminationGracePeriodSeconds: 10` — there is nothing to drain, and a
+  long grace period just delays the retry.
+- **Spread, don't concentrate.** If the suite fans out across apps, a single reclaimed node
+  shouldn't take the whole run with it. Independent Jobs per app beat one big Job with thirty
+  steps.
+
+### The one exception to argue about
+
+The **MinIO Tenant is the only stateful thing here**, and spot reclamation means its pods restart
+under it. That is acceptable *on one condition*: the bucket must hold nothing irreplaceable.
+
+- **Screenshot baselines live in git**, next to the tests, reviewed by pull request. They are the
+  source of truth and must never live only in the bucket.
+- **MinIO holds only disposable output** — HTML reports, traces, videos — under an ILM expiry rule
+  (30 days is plenty) so it stays small and cheap.
+- Back the Tenant with **network-attached PVs, not local disk**, so a reclaimed node reattaches
+  rather than losing the volume.
+
+With those three in place, losing the Tenant costs you old report history and nothing else, and
+running it on spot is a sound trade. If you'd rather not lose report history at all, pin *only*
+the Tenant to on-demand by dropping the fragment from `spec.pools[]` — that is the single line to
+change, and everything else stays on spot.
 
 ## Layer 1 — Test runners
 
@@ -112,12 +213,29 @@ What schedules the runners, holds their config, and collects results.
 This is the part that makes the difference for the actual problem. The junior engineer should
 not have to remember to run tests.
 
-- **Argo CD PostSync hook** — if we're on Argo CD, a `Job` annotated
-  `argocd.argoproj.io/hook: PostSync` runs automatically after every successful sync. Test
-  failure marks the sync failed. Effectively free, and it's the natural fit for "engineer bumps
-  an image tag."
-  Caveat: a failed PostSync hook does **not** roll back on its own. Pair with a `SyncFail` hook,
-  or with an alert, or use Argo Rollouts for real reversion.
+- **Argo CD PostSync hook — this is the trigger, and it's already available.** A `Job`
+  annotated `argocd.argoproj.io/hook: PostSync` runs automatically after every successful sync,
+  which is precisely "an engineer bumped an image tag." No new controller, no new habit.
+
+  ```yaml
+  metadata:
+    annotations:
+      argocd.argoproj.io/hook: PostSync
+      argocd.argoproj.io/hook-delete-policy: HookSucceeded
+  ```
+
+  `HookSucceeded` is deliberate: passing runs clean themselves up, while a **failed** run's Job
+  and pod stick around so a junior engineer can read the logs without re-running anything.
+
+  Two things it does *not* do, which we handle elsewhere:
+  - **It does not roll back.** A failed hook marks the sync failed and stops there. Pair it with
+    a `SyncFail` hook or an alert, or move to Argo Rollouts when we want real reversion.
+  - **It does not notify.** Wire **Argo CD Notifications** to the `on-sync-failed` trigger and
+    post the MinIO report link straight to chat — that gives us alerting without standing up
+    Alertmanager just for this.
+
+  With **ApplicationSet**, the same PostSync hook template generates across every app in the
+  fleet, so onboarding a new app is a list entry rather than a new manifest.
 - **Flagger** (Apache-2.0, Flux) / **Argo Rollouts** — progressive delivery. The new version goes
   live to a slice of traffic, a webhook runs our test suite as an analysis gate, and the
   controller **automatically reverts** if the gate fails. This is the strongest version of the
@@ -130,9 +248,15 @@ not have to remember to run tests.
 
 ## Layer 4 — Results, reporting, alerting
 
-- **Playwright HTML report / trace** pushed to a self-hosted **MinIO** bucket, link posted to
-  chat. Cheapest useful reporting. The trace viewer is the thing that lets a junior engineer see
-  *what* broke without reproducing it.
+- **Playwright HTML report / trace → MinIO Tenant** (operator already available). Cheapest
+  useful reporting, and the trace viewer is the thing that lets a junior engineer see *what*
+  broke without reproducing it. Concretely:
+  - One Tenant, one bucket, laid out `s3://app-tests/<app>/<run-id>/`.
+  - An **ILM expiry rule at 30 days** so storage never becomes a line item.
+  - Tenant credentials in a Kubernetes Secret, mounted into the test Job; the upload is a
+    `mc cp --recursive` in the Job's final step.
+  - The resulting URL goes into the Argo CD Notifications message, so the alert *is* the link.
+  - Baselines do **not** live here — they live in git. See [Placement](#the-one-exception-to-argue-about).
 - **Allure Report** (Apache-2.0) + `allure-docker-service` — cross-framework reports with history
   and flakiness trends. Moderate cost, good payoff once there are more than a handful of suites.
 - **Prometheus + Grafana + Alertmanager** — pass/fail and duration as time series; alert to
@@ -163,13 +287,16 @@ the vendor renamed a CSS class is a false positive that erodes trust in the suit
 
 ### Stack A — Lean (recommended starting point)
 
-Playwright (UI + API + visual) → container image → Argo CD PostSync `Job` + nightly `CronJob`
-→ HTML report to MinIO → Alertmanager to chat.
+Playwright (UI + API + visual) → container image → **Argo CD PostSync `Job`** + nightly
+`CronJob` → HTML report to a **MinIO Tenant** → **Argo CD Notifications** to chat. All of it on
+the spot pool via a Kyverno placement policy on the `app-testing` namespace.
 
-- **Added infrastructure:** none beyond a bucket.
-- **Added cost:** burst compute only.
+- **Added infrastructure:** a MinIO Tenant and one Kyverno policy. Argo CD is already running.
+- **Added cost:** burst spot compute, plus a small Tenant with a 30-day expiry rule.
 - **Time to first value:** days.
 - **Weakness:** no self-service UI; results are links, not a dashboard.
+- **Note:** every third-party component we add from here (Testkube, Kuberhealthy, k6) spawns its
+  own pods and needs placement configured separately — the Kyverno policy handles that for us.
 
 ### Stack B — Balanced
 
@@ -188,7 +315,10 @@ Stack B **+ Flagger or Argo Rollouts**, with the test suite wired as an analysis
 failing upgrade **auto-reverts**, **+ k6** performance gates, **+ oasdiff** as a pre-sync check.
 
 - **Added infrastructure:** a progressive-delivery controller; service mesh or ingress support
-  for traffic splitting.
+  for traffic splitting. **Argo Rollouts is the natural pick over Flagger here**, since we're
+  already on Argo CD and it shares the tooling and UI.
+- **Spot interaction:** a preempted analysis run must never be read as a failed gate, or the
+  pool will roll back healthy upgrades. Retry first; report a verdict only from a completed run.
 - **Buys:** the upgrade problem stops being a detection problem and becomes a non-event.
 - **Weakness:** the most setup, and it changes how deployments work — a bigger ask of the same
   juniors we're trying to help.
@@ -197,9 +327,10 @@ failing upgrade **auto-reverts**, **+ k6** performance gates, **+ oasdiff** as a
 
 - Browser pods are the expensive part: budget roughly **1 vCPU and 1.5–2 GB per concurrent
   Chromium instance**. Cap workers rather than letting Playwright autoscale to node core count.
-- Put test workloads on a **dedicated spot/preemptible node pool that scales to zero** between
-  runs. Test workloads are bursty and interruptible — exactly the spot-instance profile — and
-  there's no production data at risk.
+- The **spot pool is already there**, so this cost is mostly already paid — see
+  [Placement](#placement-everything-lands-on-the-spot-pool) for the selector/toleration fragment
+  and the preemption handling that makes it safe. Confirm the pool **scales to zero** when idle;
+  a spot pool that keeps a warm node costs money for nothing between runs.
 - Set `ttlSecondsAfterFinished` on every test `Job`, and prune reports/artifacts on a schedule.
   Screenshot baselines and traces grow quickly.
 - Prefer pre-built runner images (the official Playwright image) over installing browsers at pod
@@ -231,13 +362,25 @@ failing upgrade **auto-reverts**, **+ k6** performance gates, **+ oasdiff** as a
 ## Recommendation
 
 Build **Stack A** first, against two or three representative apps — one UI-heavy, one API-only,
-one that's both. Wire it to Argo CD PostSync so it fires without anyone remembering. That proves
-the approach at essentially zero infrastructure cost.
+one that's both. Wire it to Argo CD PostSync so it fires without anyone remembering. With Argo CD,
+the spot pool and the MinIO operator all already in hand, the genuinely new pieces are small: a
+Playwright image, a Job manifest, a Tenant, and one Kyverno placement policy.
+
+Order of work for that first stack:
+
+1. Namespace `app-testing`, plus the Kyverno policy that pins everything in it to the spot pool.
+2. MinIO Tenant with a 30-day ILM expiry rule, and credentials in a Secret.
+3. Playwright image with the suite; baselines committed to git, generated inside that same image.
+4. PostSync hook Job (`hook-delete-policy: HookSucceeded`) plus a nightly CronJob backstop.
+5. Argo CD Notifications on `on-sync-failed`, carrying the MinIO report link.
+6. Roll out to the rest of the fleet with an ApplicationSet.
 
 Then add, in this order:
 
 1. **Schemathesis** for every app with a spec — highest ratio of edge cases found to effort spent.
 2. **Testkube or Argo Workflows** once the suite count makes bare `Job`s awkward, mainly for the
-   self-service UI.
-3. **Flagger/Argo Rollouts auto-revert** once the suite is trusted enough to be a gate. Do not
-   gate on a suite that still flakes.
+   self-service UI. Remember to configure placement on their *executor* pod templates, not just
+   the controller.
+3. **Argo Rollouts auto-revert** once the suite is trusted enough to be a gate — preferred over
+   Flagger given we're already on Argo CD. Do not gate on a suite that still flakes, and make
+   sure spot preemption can never be mistaken for a failed gate first.
