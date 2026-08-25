@@ -1,0 +1,1286 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!--
+  Standalone copy of the decision brief published at
+  https://claude.ai/code/artifact/aefaa266-d432-40b7-b4b0-eb568ff085be
+
+  Same content as docs/testing-options.md, laid out for reading in a browser.
+  The published artifact is served as a fragment (the host supplies the
+  doctype, head and a CSS reset); this file adds them so it opens correctly
+  straight from disk. If you edit one, edit the other.
+-->
+<!-- minimal reset, mirroring what the artifact host injects -->
+<style>
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; }
+  img, svg, video { max-width: 100%; }
+</style>
+<title>The Upgrade Guard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@400;600&family=Public+Sans:ital,wght@0,400;0,500;0,700;1,400&family=JetBrains+Mono:wght@400;500;700&display=swap">
+
+<style>
+  :root {
+    --ground:    #EEF2F2;
+    --surface:   #FFFFFF;
+    --surface-2: #E2E9E9;
+    --ink:       #14232A;
+    --muted:     #566E77;
+    --rule:      #CCD9D9;
+    --rule-soft: #DCE5E5;
+    --accent:    #0C757E;
+    --accent-ink:#08585F;
+    --accent-wash: rgba(12,117,126,.09);
+    --good:      #2C7049;
+    --warn:      #8E6208;
+    --crit:      #9E3624;
+    --shadow:    0 1px 2px rgba(20,35,42,.05), 0 8px 24px -16px rgba(20,35,42,.35);
+
+    --f-display: "Spectral", Georgia, "Times New Roman", serif;
+    --f-body:    "Public Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    --f-mono:    "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+    --measure: 68ch;
+    --wide: 1080px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:    #0C1417;
+      --surface:   #131E22;
+      --surface-2: #1A272C;
+      --ink:       #DBE7E9;
+      --muted:     #8CA3AA;
+      --rule:      #24343A;
+      --rule-soft: #1C2A2F;
+      --accent:    #45B4BC;
+      --accent-ink:#7FD2D8;
+      --accent-wash: rgba(69,180,188,.11);
+      --good:      #5FBE87;
+      --warn:      #D0A044;
+      --crit:      #E27461;
+      --shadow:    0 1px 2px rgba(0,0,0,.4), 0 8px 24px -16px rgba(0,0,0,.8);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground:    #0C1417;
+    --surface:   #131E22;
+    --surface-2: #1A272C;
+    --ink:       #DBE7E9;
+    --muted:     #8CA3AA;
+    --rule:      #24343A;
+    --rule-soft: #1C2A2F;
+    --accent:    #45B4BC;
+    --accent-ink:#7FD2D8;
+    --accent-wash: rgba(69,180,188,.11);
+    --good:      #5FBE87;
+    --warn:      #D0A044;
+    --crit:      #E27461;
+    --shadow:    0 1px 2px rgba(0,0,0,.4), 0 8px 24px -16px rgba(0,0,0,.8);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--f-body);
+    font-size: 16.5px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+    margin: 0;
+    padding: 0 20px 96px;
+    overflow-x: hidden;
+  }
+
+  .wrap { max-width: var(--wide); margin: 0 auto; }
+  .col  { max-width: var(--measure); }
+
+  p { margin: 0 0 1em; }
+  a { color: var(--accent-ink); text-underline-offset: 2px; text-decoration-thickness: 1px; }
+  a:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px;
+  }
+  strong { font-weight: 700; }
+  code {
+    font-family: var(--f-mono); font-size: .86em;
+    background: var(--surface-2); padding: .1em .38em; border-radius: 3px;
+  }
+
+  /* ---------- masthead ---------- */
+  header.mast {
+    border-bottom: 1px solid var(--rule);
+    padding: 68px 0 40px;
+    margin-bottom: 52px;
+  }
+  .eyebrow {
+    font-family: var(--f-mono); font-size: 11.5px; font-weight: 500;
+    letter-spacing: .14em; text-transform: uppercase; color: var(--accent-ink);
+    margin: 0 0 20px;
+  }
+  h1 {
+    font-family: var(--f-display); font-weight: 600;
+    font-size: clamp(2.5rem, 6vw, 4.1rem); line-height: 1.02;
+    letter-spacing: -.02em; text-wrap: balance;
+    margin: 0 0 22px; max-width: 16ch;
+  }
+  .standfirst {
+    font-size: 1.16rem; color: var(--muted); max-width: 60ch; margin: 0 0 34px;
+  }
+  .standfirst em { color: var(--ink); font-style: italic; }
+
+  .constraints {
+    display: flex; flex-wrap: wrap; gap: 8px;
+    font-family: var(--f-mono); font-size: 11.5px; letter-spacing: .04em;
+  }
+  .constraints span {
+    border: 1px solid var(--rule); border-radius: 2px;
+    padding: 5px 10px; color: var(--muted); background: var(--surface);
+  }
+
+  /* ---------- sections ---------- */
+  section { margin: 0 0 68px; }
+  .sec-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 22px; }
+  .sec-num {
+    font-family: var(--f-mono); font-size: 12px; font-weight: 700;
+    color: var(--accent); letter-spacing: .08em;
+    padding-top: .35em; flex: none;
+  }
+  h2 {
+    font-family: var(--f-display); font-weight: 600;
+    font-size: clamp(1.55rem, 3vw, 2.05rem); line-height: 1.18;
+    letter-spacing: -.012em; margin: 0; text-wrap: balance;
+  }
+  h3 {
+    font-family: var(--f-body); font-weight: 700; font-size: 1rem;
+    letter-spacing: .01em; margin: 34px 0 12px;
+  }
+  .kicker {
+    font-family: var(--f-mono); font-size: 11px; letter-spacing: .13em;
+    text-transform: uppercase; color: var(--muted); margin: 0 0 8px;
+  }
+
+  /* ---------- tables ---------- */
+  .scroller { overflow-x: auto; margin: 26px 0 8px; padding-bottom: 4px; }
+  table {
+    border-collapse: collapse; width: 100%; min-width: 620px;
+    font-size: 14.5px; line-height: 1.5;
+  }
+  th, td { text-align: left; padding: 12px 16px 12px 0; vertical-align: top; }
+  th {
+    font-family: var(--f-mono); font-size: 10.5px; font-weight: 500;
+    letter-spacing: .11em; text-transform: uppercase; color: var(--muted);
+    border-bottom: 1px solid var(--rule); padding-bottom: 9px;
+  }
+  td { border-bottom: 1px solid var(--rule-soft); }
+  tbody tr:last-child td { border-bottom: 0; }
+  td:first-child { font-weight: 500; padding-right: 24px; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* ---------- option cards ---------- */
+  .cards { display: grid; gap: 1px; background: var(--rule-soft); border: 1px solid var(--rule-soft); }
+  @media (min-width: 760px) { .cards { grid-template-columns: 1fr 1fr; } }
+  .card { background: var(--surface); padding: 20px 22px 22px; display: flex; flex-direction: column; gap: 9px; }
+  .card.lead { background: var(--accent-wash); }
+  .card-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .tool { font-family: var(--f-mono); font-weight: 700; font-size: 14.5px; letter-spacing: -.01em; }
+  .card.lead .tool { color: var(--accent-ink); }
+  .lic {
+    font-family: var(--f-mono); font-size: 10.5px; color: var(--muted);
+    letter-spacing: .04em; white-space: nowrap;
+  }
+  .card p { margin: 0; font-size: 14.5px; line-height: 1.55; color: var(--ink); }
+  .card .role {
+    font-size: 13px; color: var(--muted); font-style: italic;
+    margin-top: -3px;
+  }
+  .flag {
+    font-family: var(--f-mono); font-size: 11.5px; line-height: 1.5;
+    border-left: 2px solid var(--warn); padding-left: 10px; color: var(--muted);
+  }
+  .flag.stop { border-left-color: var(--crit); }
+  .flag.go   { border-left-color: var(--good); }
+
+  /* ---------- code & callouts ---------- */
+  pre {
+    font-family: var(--f-mono); font-size: 12.5px; line-height: 1.65;
+    background: var(--surface); border: 1px solid var(--rule);
+    border-left: 3px solid var(--accent); border-radius: 3px;
+    padding: 18px 20px; overflow-x: auto; margin: 24px 0; color: var(--ink);
+  }
+  pre code { background: none; padding: 0; font-size: inherit; }
+  pre .cmt { color: var(--muted); }
+  pre .key { color: var(--accent-ink); }
+
+  .callout {
+    background: var(--surface); border: 1px solid var(--rule);
+    border-left: 3px solid var(--warn); border-radius: 3px;
+    padding: 22px 26px; margin: 26px 0; box-shadow: var(--shadow);
+  }
+  .callout.hot  { border-left-color: var(--crit); }
+  .callout.cool { border-left-color: var(--accent); }
+  .callout h4 {
+    font-family: var(--f-body); font-weight: 700; font-size: 14px;
+    margin: 0 0 9px; letter-spacing: .01em;
+  }
+  .callout p { margin: 0 0 .75em; font-size: 14.5px; line-height: 1.6; }
+  .callout p:last-child { margin-bottom: 0; }
+  .callout ul {
+    margin: 10px 0 0; padding-left: 18px; font-size: 14.5px;
+    display: flex; flex-direction: column; gap: 7px; line-height: 1.55;
+  }
+
+  /* ---------- givens ---------- */
+  .givens {
+    display: grid; gap: 1px; background: var(--rule);
+    border: 1px solid var(--rule); margin-bottom: 30px;
+  }
+  @media (min-width: 820px) { .givens { grid-template-columns: repeat(3, 1fr); } }
+  .given { background: var(--surface); padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 5px; }
+  .g-k {
+    font-family: var(--f-mono); font-size: 9.5px; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--accent-ink);
+  }
+  .g-v { font-family: var(--f-mono); font-size: 13.5px; font-weight: 700; }
+  .g-n { font-size: 13px; color: var(--muted); line-height: 1.45; }
+
+  /* ---------- figure ---------- */
+  figure { margin: 0; }
+  .figbox {
+    background: var(--surface); border: 1px solid var(--rule);
+    border-radius: 3px; padding: 26px 22px 18px; box-shadow: var(--shadow);
+  }
+  .figbox .scroller { margin: 0; }
+  svg.flow { display: block; width: 100%; min-width: 660px; height: auto; color: var(--ink); }
+  svg.flow .bx { fill: var(--surface-2); stroke: var(--rule); stroke-width: 1; }
+  svg.flow .bx-hl { fill: var(--accent-wash); stroke: var(--accent); stroke-width: 1.4; stroke-dasharray: 5 3; }
+  svg.flow .lbl { font-family: var(--f-mono); font-size: 12px; font-weight: 500; fill: currentColor; }
+  svg.flow .edge { font-family: var(--f-mono); font-size: 10.5px; fill: var(--muted); }
+  svg.flow .edge-hl { font-family: var(--f-mono); font-size: 10.5px; fill: var(--accent); font-weight: 700; }
+  svg.flow .ah { fill: currentColor; opacity: .7; }
+  svg.flow .ah-hl { fill: var(--accent); }
+  svg.flow .lbl-hl { fill: var(--accent-ink); }
+  svg.flow .bx-bad  { fill: var(--surface); stroke: var(--crit); stroke-width: 1.3; }
+  svg.flow .bx-good { fill: var(--accent-wash); stroke: var(--accent); stroke-width: 1.3; }
+  svg.flow .eyeb {
+    font-family: var(--f-mono); font-size: 10px; font-weight: 700;
+    letter-spacing: .14em; fill: var(--muted);
+  }
+  svg.flow .note-bad  { font-family: var(--f-body); font-size: 11.5px; fill: var(--crit); }
+  svg.flow .note-good { font-family: var(--f-body); font-size: 11.5px; fill: var(--accent-ink); }
+  svg.flow .sub { font-family: var(--f-mono); font-size: 10px; fill: var(--muted); }
+  svg.flow .ln { stroke: currentColor; stroke-width: 1.3; fill: none; opacity: .7; }
+  svg.flow .ln-hl { stroke: var(--accent); stroke-width: 1.6; fill: none; stroke-dasharray: 6 3; }
+  figcaption {
+    font-size: 13.5px; color: var(--muted); margin-top: 14px;
+    max-width: 74ch; line-height: 1.55;
+  }
+
+  /* ---------- stacks ---------- */
+  .stacks { display: grid; gap: 18px; margin-top: 26px; }
+  @media (min-width: 900px) { .stacks { grid-template-columns: repeat(3, 1fr); } }
+  .stack {
+    background: var(--surface); border: 1px solid var(--rule); border-radius: 3px;
+    padding: 22px 22px 24px; display: flex; flex-direction: column; gap: 12px;
+    box-shadow: var(--shadow);
+  }
+  .stack.pick { border-color: var(--accent); border-width: 1.5px; }
+  .stack-id {
+    font-family: var(--f-mono); font-size: 11px; letter-spacing: .13em;
+    text-transform: uppercase; color: var(--muted);
+    display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  }
+  .stack.pick .stack-id { color: var(--accent-ink); }
+  .badge {
+    font-family: var(--f-mono); font-size: 9.5px; letter-spacing: .1em;
+    background: var(--accent); color: var(--surface);
+    padding: 3px 7px; border-radius: 2px; font-weight: 700;
+  }
+  .stack h3 { font-family: var(--f-display); font-weight: 600; font-size: 1.35rem; margin: 0; letter-spacing: -.01em; }
+  .stack ul { margin: 0; padding-left: 0; list-style: none; display: flex; flex-direction: column; gap: 7px; }
+  .stack li {
+    font-size: 14px; line-height: 1.45; padding-left: 16px; position: relative; color: var(--ink);
+  }
+  .stack li::before {
+    content: ""; position: absolute; left: 0; top: .58em;
+    width: 6px; height: 1.5px; background: var(--accent); opacity: .8;
+  }
+  .stack .meta {
+    margin-top: auto; padding-top: 14px; border-top: 1px solid var(--rule-soft);
+    display: grid; grid-template-columns: auto 1fr; gap: 4px 12px;
+    font-size: 12.5px;
+  }
+  .stack .meta dt { font-family: var(--f-mono); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding-top: 3px; }
+  .stack .meta dd { margin: 0; }
+
+  /* ---------- traps ---------- */
+  .traps { display: flex; flex-direction: column; gap: 0; margin-top: 24px; border-top: 1px solid var(--rule); }
+  .trap { padding: 18px 0; border-bottom: 1px solid var(--rule-soft); display: grid; gap: 4px 26px; }
+  @media (min-width: 760px) { .trap { grid-template-columns: 200px 1fr; } }
+  .trap dt { font-weight: 700; font-size: 14.5px; }
+  .trap dd { margin: 0; font-size: 14.5px; color: var(--muted); line-height: 1.55; max-width: 64ch; }
+  .trap dd b { color: var(--ink); font-weight: 500; }
+
+  /* ---------- recommendation ---------- */
+  .rec {
+    background: var(--surface); border: 1px solid var(--rule);
+    border-left: 3px solid var(--accent); border-radius: 3px;
+    padding: 30px 32px; box-shadow: var(--shadow);
+  }
+  .rec p:last-child { margin-bottom: 0; }
+  ol.steps { margin: 18px 0 0; padding-left: 0; list-style: none; counter-reset: s; display: flex; flex-direction: column; gap: 14px; }
+  ol.steps li { counter-increment: s; padding-left: 40px; position: relative; font-size: 15px; line-height: 1.55; }
+  ol.steps li::before {
+    content: counter(s); position: absolute; left: 0; top: 0;
+    font-family: var(--f-mono); font-size: 11px; font-weight: 700; color: var(--accent);
+    border: 1px solid var(--accent); border-radius: 50%;
+    width: 22px; height: 22px; display: grid; place-items: center;
+  }
+
+  footer {
+    border-top: 1px solid var(--rule); margin-top: 20px; padding-top: 26px;
+    font-size: 13px; color: var(--muted);
+  }
+  footer ul { margin: 10px 0 0; padding-left: 0; list-style: none; display: flex; flex-direction: column; gap: 5px; }
+  footer a { font-family: var(--f-mono); font-size: 12.5px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="mast">
+    <p class="eyebrow">Decision brief &middot; app-tester</p>
+    <h1>The Upgrade Guard</h1>
+    <p class="standfirst">
+      Thirty-odd third-party apps in one Kubernetes cluster, upgraded by engineers who can't be
+      expected to know every edge case each vendor just changed. The pods go <em>Ready</em>;
+      the search box quietly stopped working. Here is the tooling landscape for catching that
+      in-cluster, on open source, without a platform bill &mdash; and with three pieces of the
+      answer already sitting in the cluster.
+    </p>
+    <div class="givens">
+      <div class="given">
+        <span class="g-k">already have</span>
+        <span class="g-v">spot node pool</span>
+        <span class="g-n">Tainted. Everything below deploys here with a matching nodeSelector and toleration.</span>
+      </div>
+      <div class="given">
+        <span class="g-k">already have</span>
+        <span class="g-v">Argo CD</span>
+        <span class="g-n">Settles the trigger: a PostSync hook fires on every upgrade. No new controller.</span>
+      </div>
+      <div class="given">
+        <span class="g-k">already have</span>
+        <span class="g-v">MinIO Operator</span>
+        <span class="g-n">Settles the sink: reports and traces land in a Tenant bucket, cheaply.</span>
+      </div>
+    </div>
+    <div class="constraints">
+      <span>open source</span>
+      <span>self-hosted</span>
+      <span>same cluster</span>
+      <span>test data only</span>
+      <span>cost-constrained</span>
+    </div>
+  </header>
+
+  <section>
+    <div class="sec-head">
+      <span class="sec-num">01</span>
+      <h2>The constraint that shapes every other choice</h2>
+    </div>
+    <div class="col">
+      <p>
+        We don't own these applications. We can't add test hooks, we don't control the release
+        notes, and the DOM and routes change without warning. That makes hand-written,
+        selector-heavy test scripts the single most expensive thing we could build &mdash; every
+        upstream release turns into test maintenance, and a suite that needs repair every
+        Tuesday gets ignored by Thursday.
+      </p>
+      <p>
+        So weight the suite toward techniques whose per-app authoring cost is close to zero, and
+        spend the scripting budget only on the two or three journeys per app that would actually
+        page someone.
+      </p>
+    </div>
+
+    <div class="scroller">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Technique</th>
+            <th scope="col">Authoring cost per app</th>
+            <th scope="col">What it catches that nothing else does</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Visual diffing</td>
+            <td>A list of URLs</td>
+            <td>Layout breaks, vanished buttons, CSS regressions &mdash; the exact "UI elements broke" complaint, with no assertions written</td>
+          </tr>
+          <tr>
+            <td>Console &amp; network assertions</td>
+            <td>One shared fixture, reused everywhere</td>
+            <td>JS exceptions, 4xx/5xx during page load, broken asset paths</td>
+          </tr>
+          <tr>
+            <td>Spec-driven API fuzzing</td>
+            <td>Zero, if the app publishes OpenAPI</td>
+            <td>Boundary values, type mismatches, constraint violations &mdash; edge cases nobody thought to write down</td>
+          </tr>
+          <tr>
+            <td>Spec diffing between versions</td>
+            <td>Zero</td>
+            <td>Breaking API changes, spotted <em>before</em> the upgrade is applied</td>
+          </tr>
+          <tr>
+            <td>Accessibility / DOM scans</td>
+            <td>Zero</td>
+            <td>Structural breakage: lost labels, orphaned landmarks, broken form associations</td>
+          </tr>
+          <tr>
+            <td>Scripted user journeys</td>
+            <td>High &mdash; and re-paid at every upgrade</td>
+            <td>Real multi-step workflow breakage. Irreplaceable, but ration it.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="sec-num">02</span>
+      <h2>Where the tester plugs into the upgrade path</h2>
+    </div>
+    <figure>
+      <div class="figbox">
+        <div class="scroller">
+          <svg class="flow" viewBox="0 0 980 262" role="img"
+               aria-label="An engineer bumps an image tag in git; Argo CD syncs it to the app pods and fires a PostSync hook that starts the test suite pod; the suite drives the app's UI and API and produces a pass or fail verdict, which always writes a report to the MinIO tenant and notifies via Argo CD, and in Stack C additionally triggers an auto-revert edge back to the app.">
+            <defs>
+              <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path class="ah" d="M 0 1 L 9 5 L 0 9 z"></path>
+              </marker>
+              <marker id="arh" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path class="ah-hl" d="M 0 1 L 9 5 L 0 9 z"></path>
+              </marker>
+            </defs>
+
+            <!-- boxes -->
+            <rect class="bx" x="20"  y="60"  width="120" height="46" rx="3"></rect>
+            <text class="lbl" x="80"  y="88"  text-anchor="middle">git</text>
+
+            <rect class="bx" x="200" y="60"  width="120" height="46" rx="3"></rect>
+            <text class="lbl" x="260" y="88"  text-anchor="middle">Argo CD</text>
+
+            <rect class="bx" x="380" y="60"  width="170" height="46" rx="3"></rect>
+            <text class="lbl" x="465" y="82"  text-anchor="middle">app pods</text>
+            <text class="edge" x="465" y="96" text-anchor="middle">new version</text>
+
+            <rect class="bx" x="610" y="60"  width="130" height="46" rx="3"></rect>
+            <text class="lbl" x="675" y="82"  text-anchor="middle">MinIO tenant</text>
+            <text class="edge" x="675" y="96" text-anchor="middle">+ Argo CD notify</text>
+
+            <rect class="bx" x="380" y="190" width="170" height="46" rx="3"></rect>
+            <text class="lbl" x="465" y="212" text-anchor="middle">test suite pod</text>
+            <text class="edge" x="465" y="226" text-anchor="middle">Playwright / Hurl / fuzz</text>
+
+            <rect class="bx" x="610" y="190" width="130" height="46" rx="3"></rect>
+            <text class="lbl" x="675" y="218" text-anchor="middle">pass / fail</text>
+
+            <rect class="bx-hl" x="800" y="190" width="160" height="46" rx="3"></rect>
+            <text class="lbl" x="880" y="212" text-anchor="middle" class="lbl lbl-hl">auto-revert</text>
+            <text class="edge-hl" x="880" y="226" text-anchor="middle">Stack C only</text>
+
+            <!-- edges -->
+            <line class="ln" x1="140" y1="83" x2="194" y2="83" marker-end="url(#ar)"></line>
+            <text class="edge" x="167" y="74" text-anchor="middle">bump tag</text>
+
+            <line class="ln" x1="320" y1="83" x2="374" y2="83" marker-end="url(#ar)"></line>
+            <text class="edge" x="347" y="74" text-anchor="middle">sync</text>
+
+            <polyline class="ln" points="260,106 260,213 374,213" marker-end="url(#ar)"></polyline>
+            <text class="edge" x="250" y="152" text-anchor="end">PostSync</text>
+            <text class="edge" x="250" y="166" text-anchor="end">hook fires</text>
+
+            <line class="ln" x1="465" y1="190" x2="465" y2="112" marker-end="url(#ar)"></line>
+            <text class="edge" x="477" y="147">drives UI,</text>
+            <text class="edge" x="477" y="161">calls API</text>
+
+            <line class="ln" x1="550" y1="213" x2="604" y2="213" marker-end="url(#ar)"></line>
+            <text class="edge" x="577" y="204" text-anchor="middle">result</text>
+
+            <line class="ln" x1="675" y1="190" x2="675" y2="112" marker-end="url(#ar)"></line>
+            <text class="edge" x="687" y="154">always</text>
+
+            <line class="ln-hl" x1="740" y1="213" x2="794" y2="213" marker-end="url(#arh)"></line>
+            <text class="edge-hl" x="767" y="204" text-anchor="middle">on fail</text>
+
+            <polyline class="ln-hl" points="880,190 880,26 450,26 450,58" marker-end="url(#arh)"></polyline>
+            <text class="edge-hl" x="665" y="18" text-anchor="middle">rolls the upgrade back, unattended</text>
+          </svg>
+        </div>
+      </div>
+      <figcaption>
+        Everything on the top row already exists in the cluster &mdash; Argo CD, the apps, the MinIO
+        tenant. The only new thing is the bottom row. The whole flow is identical in every option
+        below; what changes is one edge. Stacks&nbsp;A and&nbsp;B stop at the report: a human reads
+        the result and decides. Stack&nbsp;C adds the dashed edge, where a progressive-delivery
+        controller treats the verdict as a gate and undoes the upgrade itself. That single arrow is
+        the difference between detecting the problem and not having it.
+      </figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="sec-num">03</span>
+      <h2>Placement: everything lands on the spot pool</h2>
+    </div>
+    <div class="col">
+      <p>
+        Every pod in this system is ephemeral or disposable, so all of it belongs on the existing
+        spot pool. Substitute the real label and taint key &mdash; the shape is identical
+        everywhere:
+      </p>
+    </div>
+
+<pre><code><span class="cmt"># The fragment. Goes into every pod spec this system creates.</span>
+<span class="key">nodeSelector:</span>
+  &lt;spot-pool-label&gt;: "true"        <span class="cmt"># karpenter.sh/capacity-type: spot</span>
+                                   <span class="cmt"># cloud.google.com/gke-spot: "true"</span>
+                                   <span class="cmt"># eks.amazonaws.com/capacityType: SPOT</span>
+<span class="key">tolerations:</span>
+  - key: "&lt;spot-taint-key&gt;"
+    operator: "Equal"
+    value: "true"
+    effect: "NoSchedule"</code></pre>
+
+    <div class="scroller">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Component</th>
+            <th scope="col">Path the fragment goes into</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>Playwright test Job</td><td><code>spec.template.spec</code></td></tr>
+          <tr><td>Argo CD PostSync hook Job</td><td><code>spec.template.spec</code> &mdash; it is an ordinary Job</td></tr>
+          <tr><td>Nightly CronJob</td><td><code>spec.jobTemplate.spec.template.spec</code></td></tr>
+          <tr><td>MinIO <em>Operator</em></td><td>Helm <code>operator.nodeSelector</code> / <code>operator.tolerations</code></td></tr>
+          <tr><td>MinIO <em>Tenant</em></td><td><code>spec.pools[].nodeSelector</code> and <code>spec.pools[].tolerations</code> &mdash; separate from the operator's own</td></tr>
+          <tr><td>Testkube</td><td>Chart values <em>and</em> the executor job template &mdash; executors spawn their own pods</td></tr>
+          <tr><td>Argo Workflows</td><td><code>workflowDefaults.spec</code> in the controller ConfigMap, so every workflow inherits it</td></tr>
+          <tr><td>Kuberhealthy</td><td>Chart values <em>and</em> each <code>KuberhealthyCheck</code> pod spec &mdash; checks run as their own pods</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout hot">
+      <h4>The gotcha worth internalising</h4>
+      <p>
+        An operator's own placement is <strong>not inherited</strong> by the pods it creates.
+        Testkube executors, Kuberhealthy checks, k6 runners and MinIO Tenant pods are each spawned
+        by a controller and each need the fragment configured separately. Miss one and it schedules
+        onto the default pool &mdash; where it works perfectly, and quietly bills on-demand rates
+        until someone reads an invoice.
+      </p>
+    </div>
+
+    <figure>
+      <div class="figbox">
+        <div class="scroller">
+          <svg class="flow" viewBox="0 0 870 252" role="img"
+               aria-label="Without an admission policy, a controller pod that has the spot toleration spawns an executor pod that has none, so the executor schedules onto the on-demand pool. With a Kyverno mutating policy on the namespace, the same spawned pod is intercepted at admission, has the nodeSelector and toleration injected, and lands on the spot pool.">
+            <defs>
+              <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path class="ah" d="M 0 1 L 9 5 L 0 9 z"></path>
+              </marker>
+              <marker id="arh2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path class="ah-hl" d="M 0 1 L 9 5 L 0 9 z"></path>
+              </marker>
+            </defs>
+
+            <text class="eyeb" x="20" y="26">WITHOUT AN ADMISSION POLICY</text>
+
+            <rect class="bx" x="20" y="44" width="150" height="48" rx="3"></rect>
+            <text class="lbl" x="95" y="65" text-anchor="middle">controller pod</text>
+            <text class="sub" x="95" y="81" text-anchor="middle">toleration set</text>
+
+            <line class="ln" x1="170" y1="68" x2="224" y2="68" marker-end="url(#ar2)"></line>
+            <text class="edge" x="197" y="59" text-anchor="middle">spawns</text>
+
+            <rect class="bx" x="230" y="44" width="160" height="48" rx="3"></rect>
+            <text class="lbl" x="310" y="65" text-anchor="middle">the pod it spawns</text>
+            <text class="sub" x="310" y="81" text-anchor="middle">no toleration</text>
+
+            <line class="ln" x1="390" y1="68" x2="554" y2="68" marker-end="url(#ar2)"></line>
+            <text class="edge" x="472" y="59" text-anchor="middle">scheduled as-is</text>
+
+            <rect class="bx-bad" x="560" y="44" width="180" height="48" rx="3"></rect>
+            <text class="lbl" x="650" y="73" text-anchor="middle">on-demand pool</text>
+            <text class="note-bad" x="650" y="110" text-anchor="middle">works fine, quietly costs money</text>
+
+            <text class="eyeb" x="20" y="148">WITH A KYVERNO MUTATING POLICY</text>
+
+            <rect class="bx" x="20" y="166" width="150" height="48" rx="3"></rect>
+            <text class="lbl" x="95" y="187" text-anchor="middle">controller pod</text>
+            <text class="sub" x="95" y="203" text-anchor="middle">toleration set</text>
+
+            <line class="ln" x1="170" y1="190" x2="224" y2="190" marker-end="url(#ar2)"></line>
+            <text class="edge" x="197" y="181" text-anchor="middle">spawns</text>
+
+            <rect class="bx" x="230" y="166" width="160" height="48" rx="3"></rect>
+            <text class="lbl" x="310" y="187" text-anchor="middle">the pod it spawns</text>
+            <text class="sub" x="310" y="203" text-anchor="middle">no toleration</text>
+
+            <line class="ln" x1="390" y1="190" x2="434" y2="190" marker-end="url(#ar2)"></line>
+            <text class="edge" x="412" y="181" text-anchor="middle">create</text>
+
+            <rect class="bx-good" x="440" y="166" width="150" height="48" rx="3"></rect>
+            <text class="lbl lbl-hl" x="515" y="187" text-anchor="middle">Kyverno</text>
+            <text class="sub" x="515" y="203" text-anchor="middle">injects both</text>
+
+            <line class="ln-hl" x1="590" y1="190" x2="644" y2="190" marker-end="url(#arh2)"></line>
+            <text class="edge-hl" x="617" y="181" text-anchor="middle">mutated</text>
+
+            <rect class="bx-good" x="650" y="166" width="180" height="48" rx="3"></rect>
+            <text class="lbl lbl-hl" x="740" y="195" text-anchor="middle">spot pool</text>
+            <text class="note-good" x="740" y="232" text-anchor="middle">every pod, automatically</text>
+          </svg>
+        </div>
+      </div>
+      <figcaption>
+        One inserted hop is the whole difference. Rather than threading the fragment through a
+        dozen manifests and hoping nobody forgets, put the system in an <code>app-testing</code>
+        namespace and let a single Kyverno <code>ClusterPolicy</code> inject placement at admission.
+        It catches operator-spawned pods for free, works on any distribution, and gives you one
+        file to change if the pool is ever renamed. The built-in
+        <code>PodNodeSelector</code> plugin does something similar, but needs an API-server flag
+        &mdash; usually unavailable on managed control planes &mdash; and handles only the selector,
+        not the toleration.
+      </figcaption>
+    </figure>
+
+    <h3>Spot-specific hardening</h3>
+    <div class="col">
+      <p>
+        Preemption is the price of the pool, and it arrives disguised as a test failure unless we
+        handle it deliberately.
+      </p>
+    </div>
+    <div class="cards">
+      <div class="card lead">
+        <div class="card-top"><span class="tool">A reclaimed run is not a red result</span></div>
+        <p>
+          Set <code>restartPolicy: Never</code> and <code>backoffLimit: 2</code> so a preempted run
+          retries rather than reporting a regression that never happened. Before treating a run as
+          failed, check for a <code>DisruptionTarget</code> pod condition &mdash; that's node
+          reclamation, not the app.
+        </p>
+      </div>
+      <div class="card">
+        <div class="card-top"><span class="tool">Never let preemption trip a gate</span></div>
+        <p>
+          Critical in Stack&nbsp;C: a progressive-delivery controller sees a failed analysis webhook
+          and rolls back. Report a verdict only from a run that actually reached completion. A
+          rollback caused by a spot reclaim would destroy trust in the gate on day one.
+        </p>
+      </div>
+      <div class="card">
+        <div class="card-top"><span class="tool">Give scale-up room</span></div>
+        <p>
+          A PostSync Job may sit <code>Pending</code> for a minute or two while a spot node is
+          provisioned. Set <code>activeDeadlineSeconds</code> generously &mdash; 1800 suits a full
+          suite &mdash; and don't alert on pending-under-five-minutes.
+        </p>
+      </div>
+      <div class="card">
+        <div class="card-top"><span class="tool">Spread, don't concentrate</span></div>
+        <p>
+          Independent Jobs per app beat one Job with thirty steps: a single reclaimed node then
+          costs one app's run instead of the entire sweep. Keep
+          <code>terminationGracePeriodSeconds</code> short &mdash; there's nothing to drain.
+        </p>
+      </div>
+    </div>
+
+    <div class="callout cool">
+      <h4>The one thing on spot worth arguing about</h4>
+      <p>
+        The <strong>MinIO Tenant is the only stateful component here</strong>, and spot reclamation
+        restarts its pods underneath it. That is a sound trade on one condition: the bucket must
+        hold nothing irreplaceable.
+      </p>
+      <ul>
+        <li><strong>Screenshot baselines live in git</strong>, beside the tests, approved by pull
+          request. They are the source of truth and must never live only in the bucket.</li>
+        <li><strong>MinIO holds only disposable output</strong> &mdash; HTML reports, traces, videos
+          &mdash; under an ILM expiry rule. Thirty days is plenty and keeps it small.</li>
+        <li><strong>Back the Tenant with network-attached PVs, not local disk</strong>, so a
+          reclaimed node reattaches instead of losing the volume.</li>
+      </ul>
+      <p style="margin-top:14px">
+        With those three in place, losing the Tenant costs you old report history and nothing else.
+        If you'd rather not lose even that, pin <em>only</em> the Tenant to on-demand by dropping
+        the fragment from <code>spec.pools[]</code> &mdash; that is the single line to change, and
+        everything else stays on spot.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="sec-num">04</span>
+      <h2>Layer one &mdash; what actually exercises the app</h2>
+    </div>
+
+    <p class="kicker">Browser &amp; UI</p>
+    <div class="cards">
+      <div class="card lead">
+        <div class="card-top"><span class="tool">Playwright</span><span class="lic">Apache-2.0</span></div>
+        <p class="role">The default recommendation</p>
+        <p>
+          One tool covers UI <em>and</em> API assertions. Built-in screenshot comparison
+          (<code>toHaveScreenshot()</code>), a recorder (<code>codegen</code>) that turns clicking
+          around into a test file, and a trace viewer that gives a DOM-level replay of any failure
+          &mdash; which is exactly what lets a junior engineer see what broke without reproducing it.
+          Official container images; auto-waiting kills most of the classic flake class.
+        </p>
+      </div>
+      <div class="card">
+        <div class="card-top"><span class="tool">Robot Framework + Browser</span><span class="lic">Apache-2.0</span></div>
+        <p class="role">If juniors will author, not just run</p>
+        <p>
+          Playwright underneath, plain-language keyword syntax on top, human-readable reports by
+          default. Worth it specifically because the people applying upgrades are the people who
+          should be able to read and extend these tests.
+        </p>
+      </div>
+      <div class="card">
+        <div class="card-top"><span class="tool">Cypress</span><span class="lic">MIT core</span></div>
+        <p class="role">Good DX, awkward economics</p>
+        <p>
+          Excellent authoring experience, but parallelisation and the dashboard sit in the paid
+          Cypress Cloud. <code>sorry-cypress</code> is the self-hosted OSS replacement.
+        </p>
+        <p class="flag">Check sorry-cypress maintenance activity before betting the setup on it.</p>
+      </div>
+      <div class="card">
+        <div class="card-top"><span class="tool">Selenium Grid</span><span class="lic">Apache-2.0</span></div>
+        <p class="role">Only for inherited suites</p>
+        <p>
+          If existing Selenium tests come with an app, Grid runs fine in-cluster. Don't start here:
+          heavier to operate and more flake-prone than Playwright.
+        </p>
+      </div>
+    </div>
+
+    <p class="kicker" style="margin-top:34px">API</p>
+    <div class="cards">
+      <div class="card lead">
+        <div class="card-top"><span class="tool">Schemathesis</span><span class="lic">MIT</span></div>
+        <p class="role">The direct answer to "we don't know when edge cases are hit"</p>
+        <p>
+          Property-based testing generated from an OpenAPI or GraphQL schema. It invents boundary
+          values, type mismatches and constraint violations on its own, then flags responses that
+          violate the app's own spec. Zero per-endpoint maintenance, and it routinely finds real
+          bugs on a first run.
+        </p>
+        <p class="flag go">Needs the app to publish a spec. Where one exists, this is the highest
+          finds-per-hour tool on the page.</p>
+      </div>
+      <div class="card">
+        <div class="card-top"><span class="tool">Hurl</span><span class="lic">Apache-2.0</span></div>
+        <p class="role">Cheapest useful smoke checks</p>
+        <p>
+          Plain-text request/assert files, a single static binary, a tiny container. Best
+          cost-to-value in the whole API column, and simple enough that anyone can read and edit
+          one without a tutorial.
+        </p>
+      </div>
+      <div class="card">
+        <div class="card-top"><span class="tool">oasdiff</span><span class="lic">open source</span></div>
+        <p class="role">Warning before the upgrade lands</p>
+        <p>
+          Diffs the old and new OpenAPI specs and classifies breaking changes. Run it against the
+          incoming image <em>pre-sync</em>. The cheapest early warning available, and it costs one
+          short-lived pod.
+        </p>
+      </div>
+      <div class="card">
+        <div class="card-top"><span class="tool">k6</span><span class="lic">AGPL-3.0</span></div>
+        <p class="role">Performance regressions a functional suite can't see</p>
+        <p>
+          Load testing, but <code>check()</code> also does functional assertions, and
+          <code>k6-operator</code> runs it as a CRD with Prometheus output. Catches the upgrade
+          that still works but got four times slower.
+        </p>
+      </div>
+      <div class="card">
+        <div class="card-top"><span class="tool">Bruno</span><span class="lic">OSS core</span></div>
+        <p class="role">Postman replacement with a GUI</p>
+        <p>
+          Git-native API client with a CLI runner, for when someone wants to author against a
+          visual client. Some features sit behind a paid edition.
+        </p>
+      </div>
+      <div class="card">
+        <div class="card-top"><span class="tool">axe-core</span><span class="lic">MPL-2.0</span></div>
+        <p class="role">Structure checks disguised as a11y rules</p>
+        <p>
+          Via <code>@axe-core/playwright</code>. Accessibility rules double as a structural
+          integrity check &mdash; a disappeared label or a broken landmark shows up here for free.
+        </p>
+      </div>
+    </div>
+
+    <p class="kicker" style="margin-top:34px">Visual regression</p>
+    <div class="cards">
+      <div class="card">
+        <div class="card-top"><span class="tool">Playwright screenshots</span><span class="lic">built in</span></div>
+        <p class="role">One less moving part</p>
+        <p>
+          Baselines live in git next to the tests, diffs land in the same HTML report. Unless there's
+          a reason to decouple visual testing from the functional suite, start here.
+        </p>
+      </div>
+      <div class="card">
+        <div class="card-top"><span class="tool">BackstopJS</span><span class="lic">MIT</span></div>
+        <p class="role">Standalone visual regression</p>
+        <p>
+          Its own config format and HTML diff report, Playwright- or Puppeteer-backed. Choose it if
+          visual coverage should span apps that have no functional suite at all.
+        </p>
+        <p class="flag stop">Lost Pixel, the usual OSS Percy/Chromatic alternative, was archived in
+          April 2026 &mdash; don't start a new deployment there.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="sec-num">05</span>
+      <h2>Layer two &mdash; what schedules and collects the runs</h2>
+    </div>
+    <div class="cards">
+      <div class="card lead">
+        <div class="card-top"><span class="tool">Job / CronJob</span><span class="lic">already in the cluster</span></div>
+        <p class="role">The floor, and genuinely viable</p>
+        <p>
+          One image with the suite, a <code>CronJob</code> for the nightly baseline,
+          <code>kubectl create job --from=cronjob/&hellip;</code> for ad-hoc runs, and
+          <code>ttlSecondsAfterFinished</code> for cleanup. Zero added infrastructure, zero
+          always-on cost. Its only weakness is ergonomics: no UI, results live wherever you push them.
+        </p>
+      </div>
+      <div class="card">
+        <div class="card-top"><span class="tool">Testkube</span><span class="lic">MIT + community lic.</span></div>
+        <p class="role">Kubernetes-native test orchestration</p>
+        <p>
+          Tests become CRDs; it runs Playwright, Cypress, k6, Postman, JMeter and curl as pods, and
+          can trigger suites off Kubernetes events &mdash; such as a <code>Deployment</code> image
+          change, which maps exactly onto our upgrade workflow. The agent is self-hosted and standalone.
+        </p>
+        <p class="flag">The agent is the open-source piece; the polished dashboard and
+          multi-environment features belong to the commercial Control Plane. Verify the current
+          OSS boundary against their docs before committing.</p>
+      </div>
+      <div class="card">
+        <div class="card-top"><span class="tool">Argo Workflows</span><span class="lic">Apache-2.0 &middot; CNCF</span></div>
+        <p class="role">Flexibility without adopting a testing product</p>
+        <p>
+          A general DAG engine: fan out thirty apps &times; three suites in parallel, retry, pass
+          artifacts, and get a decent UI. Pairs with Argo Events for triggering. The right answer if
+          we'd rather own a pipeline than a platform.
+        </p>
+      </div>
+      <div class="card">
+        <div class="card-top"><span class="tool">Kuberhealthy</span><span class="lic">CNCF</span></div>
+        <p class="role">Continuous probes, not regression suites</p>
+        <p>
+          An operator that runs synthetic checks as pods on a schedule and exports pass/fail to
+          Prometheus. Different shape from the rest &mdash; "can I still log in, does search answer"
+          every few minutes. Complementary, and cheap.
+        </p>
+      </div>
+      <div class="card">
+        <div class="card-top"><span class="tool">Chainsaw / kuttl</span><span class="lic">open source</span></div>
+        <p class="role">Assertions about the cluster, not the app</p>
+        <p>
+          Declarative YAML checks on Kubernetes resources after an upgrade: did the ConfigMap keys
+          survive, did the CRD version migrate. Not app testing, but it catches a real class of
+          upgrade breakage at almost no cost.
+        </p>
+      </div>
+      <div class="card">
+        <div class="card-top"><span class="tool">Tekton</span><span class="lic">Apache-2.0</span></div>
+        <p class="role">Only if already running</p>
+        <p>
+          Kubernetes-native pipelines. Perfectly capable here, but not worth adopting solely for
+          this if nothing else in the cluster uses it.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="sec-num">06</span>
+      <h2>Layer three &mdash; the trigger that removes human memory from the loop</h2>
+    </div>
+    <div class="col">
+      <p>
+        This is the layer that actually addresses the stated problem. The engineer applying the
+        upgrade should not have to remember to run anything.
+      </p>
+    </div>
+    <div class="scroller">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Trigger</th>
+            <th scope="col">Fires when</th>
+            <th scope="col">What happens on failure</th>
+            <th scope="col">Cost to adopt</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Argo CD PostSync hook <b>&larr; the pick</b></td>
+            <td>Every successful sync &mdash; i.e. every upgrade</td>
+            <td>Sync is marked failed. <b>Does not roll back on its own</b> &mdash; pair with a SyncFail hook or a notification.</td>
+            <td>An annotation on a Job. Argo CD is already running.</td>
+          </tr>
+          <tr>
+            <td>Argo Rollouts / Flagger</td>
+            <td>New version gets a slice of traffic; suite runs as an analysis gate</td>
+            <td>Controller reverts automatically. The bad upgrade undoes itself.</td>
+            <td>A controller, plus mesh or ingress traffic splitting. Prefer Argo Rollouts &mdash; shares tooling with the Argo CD already in place.</td>
+          </tr>
+          <tr>
+            <td>Testkube event trigger</td>
+            <td>A watched Kubernetes event, no GitOps required</td>
+            <td>Recorded as a failed execution; alert out</td>
+            <td>A CRD, if Testkube is already in</td>
+          </tr>
+          <tr>
+            <td>CronJob backstop</td>
+            <td>Nightly, regardless of deploys</td>
+            <td>Alert only</td>
+            <td>Effectively nothing</td>
+          </tr>
+          <tr>
+            <td>On-demand run</td>
+            <td>An engineer wants a before/after on one app</td>
+            <td>They read the report</td>
+            <td>A documented one-liner or a UI button</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout cool">
+      <h4>What the PostSync hook looks like, concretely</h4>
+<pre style="margin:12px 0 14px"><code><span class="key">metadata:</span>
+  <span class="key">annotations:</span>
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded</code></pre>
+      <p>
+        <code>HookSucceeded</code> is deliberate: passing runs clean themselves up, while a
+        <strong>failed</strong> run's Job and pod stay put so a junior engineer can read the logs
+        without re-running anything.
+      </p>
+      <p>
+        Wire <strong>Argo CD Notifications</strong> to the <code>on-sync-failed</code> trigger and
+        post the MinIO report link straight to chat &mdash; that's alerting without standing up
+        Alertmanager for it. And with an <strong>ApplicationSet</strong>, the same hook template
+        generates across the whole fleet, so onboarding an app becomes a list entry rather than a
+        new manifest.
+      </p>
+    </div>
+
+    <h3>Layer four &mdash; where results go</h3>
+    <div class="cards">
+      <div class="card lead">
+        <div class="card-top"><span class="tool">MinIO Tenant</span><span class="lic">operator already in place</span></div>
+        <p class="role">Cheapest reporting that anyone will actually open</p>
+        <p>
+          One Tenant, one bucket, laid out <code>s3://app-tests/&lt;app&gt;/&lt;run-id&gt;/</code>.
+          The Job's final step is an <code>mc cp --recursive</code>; the resulting URL goes into the
+          Argo CD notification, so the alert <em>is</em> the link. The trace viewer is the payoff:
+          a failure becomes something you scrub through, not something you reproduce.
+        </p>
+        <p class="flag go">A 30-day ILM expiry rule keeps it from ever becoming a line item.
+          Baselines don't live here &mdash; they live in git.</p>
+      </div>
+      <div class="card">
+        <div class="card-top"><span class="tool">Prometheus + Grafana</span><span class="lic">Apache-2.0</span></div>
+        <p class="role">Almost certainly already running</p>
+        <p>
+          Pass/fail and duration as time series, alerts via Alertmanager to Slack or Mattermost.
+          Kuberhealthy and k6 emit metrics natively; everything else can push to a Pushgateway.
+        </p>
+      </div>
+      <div class="card">
+        <div class="card-top"><span class="tool">Allure Report</span><span class="lic">Apache-2.0</span></div>
+        <p class="role">History and flakiness trends</p>
+        <p>
+          With <code>allure-docker-service</code>, cross-framework reports that answer the question
+          that matters on a failure: <em>is this new?</em> Worth adding once there are more than a
+          handful of suites.
+        </p>
+      </div>
+      <div class="card">
+        <div class="card-top"><span class="tool">ReportPortal</span><span class="lic">Apache-2.0</span></div>
+        <p class="role">Powerful, and the one real budget risk here</p>
+        <p>
+          Excellent aggregation and failure clustering, but it wants Postgres, RabbitMQ and
+          OpenSearch running permanently.
+        </p>
+        <p class="flag stop">This can cost more to host than the tests it reports on. Skip until
+          the suite count clearly justifies it.</p>
+      </div>
+    </div>
+
+    <h3>Layer five &mdash; optional, for selector churn</h3>
+    <div class="col">
+      <p>
+        Because we don't own these apps, a test that breaks because the vendor renamed a CSS class
+        is a false positive &mdash; and false positives are how a suite loses its audience.
+      </p>
+    </div>
+    <div class="cards">
+      <div class="card">
+        <div class="card-top"><span class="tool">Playwright codegen</span><span class="lic">built in</span></div>
+        <p class="role">Reach for this first</p>
+        <p>
+          Re-record a broken flow in a minute rather than debugging selectors. The non-AI answer,
+          and usually the sufficient one.
+        </p>
+      </div>
+      <div class="card">
+        <div class="card-top"><span class="tool">Midscene.js</span><span class="lic">MIT</span></div>
+        <p class="role">Steps in natural language, elements located by vision</p>
+        <p>
+          "Click the login button" survives a redesign that would break a CSS selector. Supports
+          self-hosted open-weight vision models such as UI-TARS and Qwen-VL.
+        </p>
+        <p class="flag stop">Self-hosting a vision model means GPU nodes, which would dwarf every
+          other line in this budget. A hosted model API is cheap per call but isn't self-hosted.</p>
+      </div>
+      <div class="card">
+        <div class="card-top"><span class="tool">LLM triage only</span><span class="lic">pragmatic middle</span></div>
+        <p class="role">Keep the hot path deterministic</p>
+        <p>
+          Tests stay ordinary code. On failure only, hand the diff and trace to a model to draft
+          "likely a real regression" vs "likely a selector rename." A few calls per failed run
+          costs cents and never touches a passing run.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="sec-num">07</span>
+      <h2>Three ways to assemble it</h2>
+    </div>
+    <div class="stacks">
+      <div class="stack pick">
+        <div class="stack-id"><span>Stack A &middot; Lean</span><span class="badge">START HERE</span></div>
+        <h3>Report and alert</h3>
+        <ul>
+          <li>Playwright for UI, API and visual, in one image</li>
+          <li>Argo CD PostSync Job + nightly CronJob</li>
+          <li>Report and trace to a MinIO Tenant</li>
+          <li>Argo CD Notifications to chat</li>
+          <li>Kyverno policy pinning the namespace to spot</li>
+        </ul>
+        <dl class="meta">
+          <dt>Added infra</dt><dd>A Tenant and one Kyverno policy &mdash; Argo CD is already running</dd>
+          <dt>Always-on</dt><dd>Burst spot compute, plus a small expiring bucket</dd>
+          <dt>To value</dt><dd class="num">Days</dd>
+          <dt>Weakness</dt><dd>No self-service UI; results are links, not a dashboard</dd>
+        </dl>
+      </div>
+
+      <div class="stack">
+        <div class="stack-id"><span>Stack B &middot; Balanced</span></div>
+        <h3>Self-service and trends</h3>
+        <ul>
+          <li>Everything in Stack A</li>
+          <li>Testkube or Argo Workflows as orchestrator</li>
+          <li>Schemathesis on every app with a spec</li>
+          <li>Kuberhealthy for continuous probes</li>
+          <li>Allure for history and flake trends</li>
+        </ul>
+        <dl class="meta">
+          <dt>Added infra</dt><dd>One operator, one report service</dd>
+          <dt>Always-on</dt><dd>A few hundred millicores, roughly 1&nbsp;GB &mdash; on spot</dd>
+          <dt>Watch for</dt><dd>Executor and check pods need placement configured separately from their controllers</dd>
+          <dt>Buys</dt><dd>A button juniors can press, and data that says whether a failure is new</dd>
+        </dl>
+      </div>
+
+      <div class="stack">
+        <div class="stack-id"><span>Stack C &middot; Gated</span></div>
+        <h3>The upgrade undoes itself</h3>
+        <ul>
+          <li>Everything in Stack B</li>
+          <li>Argo Rollouts, suite wired as an analysis webhook</li>
+          <li>k6 performance gates</li>
+          <li>oasdiff as a pre-sync check</li>
+        </ul>
+        <dl class="meta">
+          <dt>Added infra</dt><dd>Argo Rollouts (shares tooling with Argo CD); traffic splitting</dd>
+          <dt>Buys</dt><dd>Detection stops being the goal &mdash; a bad upgrade becomes a non-event</dd>
+          <dt>Watch for</dt><dd>A preempted run must never read as a failed gate, or spot will roll back healthy upgrades</dd>
+          <dt>Weakness</dt><dd>Changes how deploys work: a bigger ask of the same juniors we're helping</dd>
+        </dl>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="sec-num">08</span>
+      <h2>Keeping the bill small</h2>
+    </div>
+    <div class="col">
+      <p>
+        Browser pods are the expensive part: budget roughly <strong>1&nbsp;vCPU and 1.5&ndash;2&nbsp;GB per
+        concurrent Chromium instance</strong>, and cap worker count explicitly rather than letting
+        Playwright scale to the node's core count.
+      </p>
+      <p>
+        The <strong>spot pool is already there</strong>, so most of this is paid for &mdash; see
+        Placement above for the fragment and the preemption handling that makes it safe. The one
+        thing worth confirming is that the pool <strong>actually scales to zero</strong> when idle;
+        a spot pool holding a warm node costs money for nothing between runs.
+      </p>
+      <p>
+        Set <code>ttlSecondsAfterFinished</code> on every test Job and prune artifacts on a
+        schedule; screenshot baselines and traces grow fast. Use the pre-built official runner
+        images rather than installing browsers at pod start &mdash; it saves minutes and bandwidth
+        on every single run. And resist always-on platforms until the suite count earns them.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="sec-num">09</span>
+      <h2>What will bite</h2>
+    </div>
+    <dl class="traps">
+      <div class="trap">
+        <dt>Screenshot flake</dt>
+        <dd>Font rendering, animations, timestamps and live data all produce diffs that aren't
+          regressions. <b>Generate baselines inside the same pinned container image that runs
+          them</b>, disable animations, freeze the clock, mask dynamic regions &mdash; and pin the
+          browser version, because an unpinned bump invalidates every baseline at once.</dd>
+      </div>
+      <div class="trap">
+        <dt>Apps with no OpenAPI spec</dt>
+        <dd>Schemathesis and oasdiff are simply unavailable. <b>Fall back to recorded-traffic
+          replay</b>: capture a HAR of a known-good session, replay it, assert on status codes and
+          response shape.</dd>
+      </div>
+      <div class="trap">
+        <dt>State accumulation</dt>
+        <dd>These apps keep data between runs, so tests drift into failure for reasons that have
+          nothing to do with the upgrade. <b>Reset via the app's own API at suite start, or deploy a
+          fresh ephemeral namespace per run</b> and tear it down &mdash; the second is cleaner and,
+          on scale-to-zero nodes, barely more expensive.</dd>
+      </div>
+      <div class="trap">
+        <dt>Credentials</dt>
+        <dd>Tests need real logins. <b>Keep them in Kubernetes Secrets</b> (External Secrets or
+          Sealed Secrets under GitOps), never in the test repo, and never reuse a credential that
+          exists anywhere outside this cluster.</dd>
+      </div>
+      <div class="trap">
+        <dt>Baseline approval</dt>
+        <dd>When a visual diff is an <em>intended</em> change, someone has to approve the new
+          baseline. <b>Make that a pull request</b>, not a <code>--update-snapshots</code> run on
+          someone's laptop, or the safety net quietly dissolves into a rubber stamp.</dd>
+      </div>
+      <div class="trap">
+        <dt>Loss of trust</dt>
+        <dd>A suite that cries wolf gets ignored, and then the upgrade problem is back with extra
+          infrastructure attached. <b>Quarantine flaky checks into a non-blocking lane</b> rather
+          than letting them fail the gate &mdash; and never gate on a suite that still flakes.</dd>
+      </div>
+    </dl>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="sec-num">10</span>
+      <h2>Recommendation</h2>
+    </div>
+    <div class="rec">
+      <p>
+        Build <strong>Stack&nbsp;A</strong> against three representative apps &mdash; one UI-heavy,
+        one API-only, one that's both. With Argo CD, the spot pool and the MinIO operator already in
+        hand, the genuinely new pieces are small: a Playwright image, a Job manifest, a Tenant, and
+        one Kyverno policy.
+      </p>
+      <p>Order of work for that first stack:</p>
+      <ol class="steps">
+        <li>Namespace <code>app-testing</code>, plus the Kyverno policy that pins everything in it
+          to the spot pool.</li>
+        <li>MinIO Tenant with a 30-day ILM expiry rule, credentials in a Secret.</li>
+        <li>Playwright image with the suite; baselines committed to git, generated inside that same
+          image.</li>
+        <li>PostSync hook Job (<code>hook-delete-policy: HookSucceeded</code>) plus a nightly
+          CronJob backstop.</li>
+        <li>Argo CD Notifications on <code>on-sync-failed</code>, carrying the MinIO report link.</li>
+        <li>Roll out across the fleet with an ApplicationSet.</li>
+      </ol>
+      <p style="margin-top:26px">Then add, in this order:</p>
+      <ol class="steps">
+        <li><strong>Schemathesis</strong> for every app that publishes a spec. Highest ratio of edge
+          cases found to effort spent, and it directly targets the "juniors don't know when edge
+          cases are hit" problem.</li>
+        <li><strong>Testkube or Argo Workflows</strong>, once bare Jobs get awkward &mdash; adopted
+          mainly for the self-service UI, not for the execution. Configure placement on their
+          <em>executor</em> pod templates, not just the controller.</li>
+        <li><strong>Argo Rollouts auto-revert</strong>, once the suite is trusted enough to be a
+          gate &mdash; preferred over Flagger since Argo CD is already here. Not before; a flaky
+          gate is worse than no gate, and spot preemption must be provably distinguishable from a
+          real failure first.</li>
+      </ol>
+    </div>
+  </section>
+
+  <footer>
+    <p>Sources consulted</p>
+    <ul>
+      <li><a href="https://docs.testkube.io/articles/open-source-or-pro">Testkube &mdash; open source agent vs. commercial control plane</a></li>
+      <li><a href="https://github.com/kuberhealthy/kuberhealthy">Kuberhealthy &mdash; synthetic checks as pods (CNCF)</a></li>
+      <li><a href="https://schemathesis.io/">Schemathesis &mdash; property-based API testing</a></li>
+      <li><a href="https://github.com/grafana/k6-operator">Grafana k6-operator &mdash; distributed k6 on Kubernetes</a></li>
+      <li><a href="https://github.com/lost-pixel/lost-pixel">Lost Pixel &mdash; archived April 2026</a></li>
+      <li><a href="https://github.com/web-infra-dev/midscene">Midscene.js &mdash; vision-driven UI automation</a></li>
+      <li><a href="https://testguild.com/visual-validation-tools/">Open-source visual validation tooling, 2026 survey</a></li>
+      <li><a href="https://codefresh.io/learn/argo-cd/argo-cd-hooks-the-basics-and-a-quick-tutorial/">Argo CD resource hooks (PreSync, PostSync, SyncFail)</a></li>
+    </ul>
+  </footer>
+
+</div>
+</body>
+</html>
